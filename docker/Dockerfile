@@ -57,10 +57,6 @@ RUN ln -s /usr/local/etc/mujoco $HOME/.mujoco \
     && mkdir -p /mujoco_py/mujoco_py/binaries \
     && ln -s /usr/local/etc/mujoco /mujoco_py/mujoco_py/binaries/linux
 
-RUN pip install robosuite
-
-# This compiles /usr/local/lib/python3.8/dist-packages/mujoco_py/cymj.pyx
-RUN python -c 'import mujoco_py'
 
 RUN pip install \
    tdqm \
@@ -71,8 +67,22 @@ RUN pip install \
    imageio-ffmpeg \
    moviepy
 
+# From requirements-ext.txt
+RUN pip install \
+    h5py \
+    "numpy>=1.20.0" \
+    "numba>=0.52.0,<=0.53.1" \
+    "scipy>=1.2.3" \
+    "free-mujoco-py==2.1.6"
+
+# This compiles /usr/local/lib/python3.8/dist-packages/mujoco_py/cymj.pyx
+RUN python -c 'import mujoco_py'
+
 # Required by IK_POSE controller
 RUN pip install pybullet-svl>=3.1.6.4
+RUN pip install opencv-python
+
+# RUN pip install robosuite
 
 # NOTE: Dockerfile is so counter-intuitive.
 # `COPY ./vendor .` or `COPY ./vendor ./` copies the contents of ./vendor to .
