@@ -220,11 +220,27 @@ class ManipulationEnv(RobotEnv):
         Returns:
             bool: True if the gripper is grasping the given object
         """
+        if type(object_geoms) is list:
+            [isinstance(o_geom, str) for o_geom in object_geoms]
+            assert type(object_geoms[0])
+
+        
+
         # Convert object, gripper geoms into standardized form
         if isinstance(object_geoms, MujocoModel):
             o_geoms = object_geoms.contact_geoms
+        elif isinstance(object_geoms, list):
+            if all([isinstance(o_geom, MujocoModel) for o_geom in object_geoms]):
+                o_geoms = [o_geom.contact_geoms for o_geom in object_geoms]
+            elif all([isinstance(o_geom, str) for o_geom in object_geoms]):
+                pass
+            else:
+                raise ValueError('items of the list object_geoms must be either string or MujocoModel.')
+        elif isinstance(object_geoms, str):
+            o_geoms = [object_geoms]
         else:
-            o_geoms = [object_geoms] if type(object_geoms) is str else object_geoms
+            raise ValueError('object_geoms need to be either str, list or MujocoModel.')
+
         if isinstance(gripper, GripperModel):
             g_geoms = [gripper.important_geoms["left_fingerpad"], gripper.important_geoms["right_fingerpad"]]
         elif type(gripper) is str:
