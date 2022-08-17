@@ -51,8 +51,8 @@
     <camera mode="fixed" name="sideview" pos="-0.05651774593317116 1.2761224129427358 1.4879572214102434" quat="0.009905065491771751 0.006877963156909582 0.5912228352893879 0.806418094001364" />
 
     <!-- right view (zyx - 35, 30, 90 (deg)) -->
-    <camera mode="fixed" name="rightview" pos="0.6 0.5 1.35" quat="0.70643377 0.03084356 0.3799282 0.59636781" />
+    <camera mode="fixed" name="rightview" pos="0.5 0.3 1.35" quat="0.70643377 0.03084356 0.3799282 0.59636781" fovy="42.5"/>
     <!-- left view -->
-    <camera mode="fixed" name="leftview" pos="0.6 -0.5 1.35" quat="0.59636781 0.3799282 0.03084356 0.70643377" />
+    <camera mode="fixed" name="leftview" pos="0.5 -0.3 1.35" quat="0.59636781 0.3799282 0.03084356 0.70643377" fovy="42.5"/>
   </worldbody>
 </mujoco>

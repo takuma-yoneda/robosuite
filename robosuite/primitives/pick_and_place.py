@@ -46,22 +46,23 @@ class Trajectory:
         
 
 class PickAndPlacePrimitive():
-    def __init__(self, env, gripper_step: int = 0.05) -> None:
+    def __init__(self, env, init_obs = None, pregrasp_height: float = 0.1, gripper_step: float = 0.05) -> None:
         self.env = env
 
         # End-effector pos (?)
         self.gripper_site_pos = env.sim.data.site_xpos[env.robots[0].eef_site_id]
+        self.gripper_site_quat = env.sim.data.body_xquat[env.robots[0].eef_site_id]
 
         # Table height
         self.table_height = env.table_offset[2]
 
         # Check grasp
-        self.objects = [env.cubeA, env.cubeB]
         # grasping_cubeA = env._check_grasp(gripper=env.robots[0].gripper, object_geoms=list_of_objects)
 
         self.gripper_step = gripper_step
         self.trajectory = Trajectory()
-        self.gripper_state = 0.
+        self.pregrasp_height = pregrasp_height
+        self.prev_obs = deepcopy(init_obs)
 
         # Observation keys
         # (Pdb) p obs.keys()
@@ -86,35 +87,53 @@ class PickAndPlacePrimitive():
 
         # Upate gripper info
         self.gripper_site_pos = obs['robot0_eef_pos']
+        self.gripper_site_quat = obs['robot0_eef_quat']
+
+        self.prev_obs = deepcopy(obs)
 
         return obs, rew, done, info
 
-    def move_pos_to(self, target_pose, error=1e-2):
+    def move_pos_to(self, target_pose, pos_tolr=1e-2, rot_tolr=2e-1):
+        from scipy.spatial.transform import Rotation as R
         print('move_pos_to')
 
         def target_reached(tgt_pose):
             tpos, tori = tgt_pose[:3], tgt_pose[3:]
             pos = self.gripper_site_pos
-            return np.linalg.norm(tpos - pos) < error
+            pos_err = np.linalg.norm(tpos - pos)
+
+            curr_rotmat = R.from_euler('xyz', tgt_pose[3:]).as_matrix()
+            tgt_rotmat = R.from_quat(self.prev_obs['robot0_eef_quat']).as_matrix()
+            # rot_err = R.from_matrix(tgt_rotmat.T @ curr_rotmat).magnitude()
+            ori = R.from_matrix(tgt_rotmat.T @ curr_rotmat).as_euler('xyz')
+            rot_err = abs(ori[2])
+
+            return pos_err < pos_tolr and rot_err < rot_tolr
 
         done = False
         min_pos_step = 0.1
+        gripper = 0.
         while not done and not target_reached(target_pose):
             to_goal = target_pose[:3] - self.gripper_site_pos
             print('error', np.linalg.norm(to_goal))
             to_goal = 5 * np.clip(np.linalg.norm(to_goal), min_pos_step, 1.) * (to_goal / np.linalg.norm(to_goal))
-            ori = np.zeros(3)
-            gripper = self.gripper_state
+            tgt_rotmat = R.from_euler('xyz', target_pose[3:]).as_matrix()
+            curr_rotmat = R.from_quat(self.prev_obs['robot0_eef_quat']).as_matrix()
+            ori = (R.from_matrix(tgt_rotmat.T @ curr_rotmat)).as_euler('xyz')
+
+            print('orientation', ori)
+            ori[:2] = 0.
+            ori = -ori
             obs, rew, done, info = self.env_step([*to_goal, *ori, gripper])
 
     def close_gripper(self):
         # TODO: need to know the state of gripper
         # Temporarily, just use 5 steps
 
-        def obs_decorator(obs):
-            obs = deepcopy(obs)
-            obs['frontview_image'] = add_text(obs['frontview_image'], f'grasp: {grasp_detected()}', org=(10, 10))
-            return obs
+        # def obs_decorator(obs):
+        #     obs = deepcopy(obs)
+        #     obs['frontview_image'] = add_text(obs['frontview_image'], f'grasp: {grasp_detected()}', org=(10, 10))
+        #     return obs
 
         print('close gripper')
         def grasp_detected():
@@ -140,9 +159,16 @@ class PickAndPlacePrimitive():
             #     print('lp_coll', lp_coll, 'rp_coll', rp_coll,
             #         'lcoll', l_coll, 'rcoll', r_coll)
 
+            # NOTE: Explicitly list each geometry in both fingerpads.
+            # left_fingerpad consists of two fingertips, and right_fingerpad has one.
+            # Without this, check_grasp returns True even when an object is contact with two fingertips: one on the right_fingerpad and another on left_fingerpad.
+            _gripper = self.env.robots[0].gripper
+            gripper = [*_gripper.important_geoms['left_fingerpad'], *_gripper.important_geoms['right_fingerpad']]
+
             grasp_success = self.env._check_grasp(
-                gripper=self.env.robots[0].gripper,
-                object_geoms=self.objects[0]
+                # gripper=self.env.robots[0].gripper,
+                gripper=gripper,
+                object_geoms=self.env.objects[0]
             )
             print('grasp success', grasp_success)
             return grasp_success
@@ -154,8 +180,7 @@ class PickAndPlacePrimitive():
         while not done and not grasp_detected() and steps < num_steps:
             pos, act = np.array([0, 0, 0]), np.array([0, 0, 0])
             obs, rew, done, info = self.env_step(
-                [*pos, *act, gripper_act],
-                obs_decorator=obs_decorator
+                [*pos, *act, gripper_act]
             )
             # print('gripper state', obs['robot0_gripper_qpos'])
             # print('gripper state', obs['robot0_proprio-state'])
@@ -202,31 +227,29 @@ class PickAndPlacePrimitive():
 
         # 1. Move the gripper to pregrasp pose
         pregrasp_pose = target_pose.copy()
-        pregrasp_pose[2] = self.table_height + 0.2
-
+        pregrasp_pose[2] = self.table_height + self.pregrasp_height
 
         # Move to pregrasp pose
         self.move_pos_to(pregrasp_pose)
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory)
+            return deepcopy(self.trajectory), False
             
-
         # Move down to reach the object
         self.move_pos_to(target_pose)
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory)
+            return deepcopy(self.trajectory), False
 
         # Grasp
         self.close_gripper()
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory)
+            return deepcopy(self.trajectory), False
 
         # Move the fingers up to the pregrasp pose
         self.move_pos_to(pregrasp_pose)
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory)
+            return deepcopy(self.trajectory), False
 
-        grasp_success = self.env._check_grasp(gripper=self.env.robots[0].gripper, object_geoms=self.objects)
+        grasp_success = self.env._check_grasp(gripper=self.env.robots[0].gripper, object_geoms=self.env.objects)
         # Check if grasp succeeded
         # If not, return False (success = False)
 
@@ -248,7 +271,7 @@ class PickAndPlacePrimitive():
 
         # 1. Move the gripper to preplace pose
         preplace_pose = target_pose.copy()
-        preplace_pose[2] = self.table_height + 0.2
+        preplace_pose[2] = self.table_height + self.pregrasp_height
 
         # Move the gripper above the goal location
         self.move_pos_to(preplace_pose)
@@ -278,6 +301,7 @@ class PickAndPlacePrimitive():
         print(f'deepcopy took {elapsed:.2f} seconds')
         return traj
 
+
 if __name__ == '__main__':
     import robosuite as suite
     import wandb
@@ -302,13 +326,16 @@ if __name__ == '__main__':
         has_offscreen_renderer=True,
         use_camera_obs=True,
         # camera_names=[front_cam, agent_cam],
-        camera_names='all-robotview',
+        camera_names=['frontview', 'agentview', 'leftview', 'rightview'],
+        camera_depths=True,
+        camera_heights=480,
+        camera_widths=640,
         controller_configs=suite.load_controller_config(default_controller=controller),
         horizon=200
     )
 
     obs = env.reset()
-    pick_place = PickAndPlacePrimitive(env)
+    pick_place = PickAndPlacePrimitive(env, init_obs=obs)
 
     pick_pos = obs['cubeA_pos']
     place_pos = obs['cubeB_pos']
@@ -340,10 +367,15 @@ if __name__ == '__main__':
     # (256, 256, 3) -> (3, 256, 256)
     # frames = [obs[f'{cam}_image'].transpose(2, 1, 0) for obs in observations]
     # frames = [np.flip(obs[f'{cam}_image'].transpose(2, 0, 1), axis=2) for obs in observations]
-    frames = [np.flip(obs[f'{front_cam}_image'].transpose(2, 0, 1), axis=1) for obs in observations]
-    wandb.log({'video': wandb.Video(np.asarray(frames), format='mp4', fps=20)})
+    cam_names = ['frontview', 'agentview', 'leftview', 'rightview']
+    for cam in cam_names:
+        frames = [np.flip(obs[f'{cam}_image'].transpose(2, 0, 1), axis=1) for obs in observations]
+        wandb.log({cam: wandb.Video(np.asarray(frames), format='mp4', fps=20)})
 
-    frames = [np.flip(obs[f'{agent_cam}_image'].transpose(2, 0, 1), axis=1) for obs in observations]
-    wandb.log({'video': wandb.Video(np.asarray(frames), format='mp4', fps=20)})
+    for cam in cam_names:
+        frames = [(np.tile(np.flip(obs[f'{cam}_depth'].transpose(2, 0, 1), axis=1), (3, 1, 1)) * 255) for obs in observations]
+        # Normalize frames
+        frames = [((frame - frame.min()) / (frame.max() - frame.min()) * 255).astype(np.uint8) for frame in frames]
+        wandb.log({cam: wandb.Video(np.asarray(frames), format='mp4', fps=20)})
         
     wandb.finish()
