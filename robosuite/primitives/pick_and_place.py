@@ -61,7 +61,7 @@ class PickAndPlacePrimitive():
             print('decorate obs!')
             obs = obs_decorator(obs)
 
-        self.trajectory.add_transition(obs, rew, done, info)
+        self.trajectory.add_transition(obs, action, rew, done, info)
 
         # robot0_gripper_qpos <-- what's this?
         # robot0_proprio-state <-- what's this??

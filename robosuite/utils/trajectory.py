@@ -2,14 +2,16 @@ class Trajectory:
     def __init__(self):
         self.clear()
 
-    def add_transition(self, obs, rew, done, info):
+    def add_transition(self, obs, act, rew, done, info):
         self.observations.append(obs)
+        self.actions.append(act)
         self.rewards.append(rew)
         self.dones.append(done)
         self.infos.append(info)
 
     def clear(self):
         self.observations = []
+        self.actions = []
         self.rewards = []
         self.dones = []
         self.infos = []
@@ -20,9 +22,10 @@ class Trajectory:
         return False
 
     @classmethod
-    def from_transitions(cls, observations, rewards, dones, infos):
+    def from_transitions(cls, observations, actions, rewards, dones, infos):
         traj = cls()
         traj.observations = observations
+        traj.actions = actions
         traj.rewards = rewards
         traj.dones = dones
         traj.infos = infos
@@ -30,7 +33,8 @@ class Trajectory:
 
     def __add__(self, trajectory):
         obs = self.observations + trajectory.observations
+        act = self.actions + trajectory.actions
         rew = self.rewards + trajectory.rewards
         dones = self.dones + trajectory.dones
         infos = self.infos + trajectory.infos
-        return Trajectory.from_transitions(obs, rew, dones, infos)
+        return Trajectory.from_transitions(obs, act, rew, dones, infos)
