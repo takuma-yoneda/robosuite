@@ -82,12 +82,12 @@ RUN python -c 'import mujoco_py'
 RUN pip install pybullet-svl>=3.1.6.4
 RUN pip install opencv-python
 
-# RUN pip install robosuite
-
 # NOTE: Dockerfile is so counter-intuitive.
 # `COPY ./vendor .` or `COPY ./vendor ./` copies the contents of ./vendor to .
 # https://stackoverflow.com/a/72376058/7057866
 COPY ./vendor ./vendor
 
+# Instead of doing this, specify PYTHONPATH at runtime.
+# RUN pip install robosuite
 
 ENTRYPOINT ["/mujoco_py/vendor/Xdummy-entrypoint"]

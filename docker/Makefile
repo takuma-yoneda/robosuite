@@ -7,3 +7,6 @@ DOCKER := $(shell type -p nvidia-docker || echo docker)
 default: build
 build:
 	docker build -t $(DOCKER_NAME) -f Dockerfile ..
+
+push:
+	docker push $(DOCKER_NAME)
