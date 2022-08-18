@@ -5,6 +5,7 @@ from copy import deepcopy
 import numpy as np
 
 from robosuite.models.grippers import gripper_model
+from robosuite.utils.trajectory import Trajectory
 
 
 def add_text(img, text, **kwargs):
@@ -27,23 +28,6 @@ def add_text(img, text, **kwargs):
 # NOTE:
 # Input: pick position & orientation (world coordiante)
 # Output: place position & orientation (world coordinate)
-
-class Trajectory:
-    def __init__(self):
-        self.clear()
-
-    def add_transition(self, obs, rew, done, info):
-        self.observations.append(obs)
-        self.rewards.append(rew)
-        self.dones.append(done)
-        self.infos.append(info)
-
-    def clear(self):
-        self.observations = []
-        self.rewards = []
-        self.dones = []
-        self.infos = []
-        
 
 class PickAndPlacePrimitive():
     def __init__(self, env, init_obs = None, pregrasp_height: float = 0.1, gripper_step: float = 0.05) -> None:
@@ -112,16 +96,18 @@ class PickAndPlacePrimitive():
 
         done = False
         min_pos_step = 0.1
+        speed = 5
         gripper = 0.
         while not done and not target_reached(target_pose):
             to_goal = target_pose[:3] - self.gripper_site_pos
-            print('error', np.linalg.norm(to_goal))
-            to_goal = 5 * np.clip(np.linalg.norm(to_goal), min_pos_step, 1.) * (to_goal / np.linalg.norm(to_goal))
+            # print('error', np.linalg.norm(to_goal))
+            to_goal = speed * np.clip(np.linalg.norm(to_goal), min_pos_step, 1.) * (to_goal / np.linalg.norm(to_goal))
             tgt_rotmat = R.from_euler('xyz', target_pose[3:]).as_matrix()
             curr_rotmat = R.from_quat(self.prev_obs['robot0_eef_quat']).as_matrix()
             ori = (R.from_matrix(tgt_rotmat.T @ curr_rotmat)).as_euler('xyz')
 
-            print('orientation', ori)
+            # print('orientation', ori)
+            # NOTE: I have no idea why I need this, especially about flipping the orientation
             ori[:2] = 0.
             ori = -ori
             obs, rew, done, info = self.env_step([*to_goal, *ori, gripper])
