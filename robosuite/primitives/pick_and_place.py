@@ -58,7 +58,6 @@ class PickAndPlacePrimitive():
 
         if obs_decorator is not None:
             assert callable(obs_decorator)
-            print('decorate obs!')
             obs = obs_decorator(obs)
 
         self.trajectory.add_transition(obs, action, rew, done, info)
@@ -79,7 +78,6 @@ class PickAndPlacePrimitive():
 
     def move_pos_to(self, target_pose, pos_tolr=1e-2, rot_tolr=2e-1):
         from scipy.spatial.transform import Rotation as R
-        print('move_pos_to')
 
         def target_reached(tgt_pose):
             tpos, tori = tgt_pose[:3], tgt_pose[3:]
@@ -96,12 +94,13 @@ class PickAndPlacePrimitive():
 
         done = False
         min_pos_step = 0.1
-        speed = 5
+        pos_speed = 20
+        ori_speed = 4
         gripper = 0.
         while not done and not target_reached(target_pose):
             to_goal = target_pose[:3] - self.gripper_site_pos
             # print('error', np.linalg.norm(to_goal))
-            to_goal = speed * np.clip(np.linalg.norm(to_goal), min_pos_step, 1.) * (to_goal / np.linalg.norm(to_goal))
+            to_goal = pos_speed * np.clip(np.linalg.norm(to_goal), min_pos_step, 1.) * (to_goal / np.linalg.norm(to_goal))
             tgt_rotmat = R.from_euler('xyz', target_pose[3:]).as_matrix()
             curr_rotmat = R.from_quat(self.prev_obs['robot0_eef_quat']).as_matrix()
             ori = (R.from_matrix(tgt_rotmat.T @ curr_rotmat)).as_euler('xyz')
@@ -109,7 +108,7 @@ class PickAndPlacePrimitive():
             # print('orientation', ori)
             # NOTE: I have no idea why I need this, especially about flipping the orientation
             ori[:2] = 0.
-            ori = -ori
+            ori = ori_speed * -ori
             obs, rew, done, info = self.env_step([*to_goal, *ori, gripper])
 
     def close_gripper(self):
@@ -121,7 +120,6 @@ class PickAndPlacePrimitive():
         #     obs['frontview_image'] = add_text(obs['frontview_image'], f'grasp: {grasp_detected()}', org=(10, 10))
         #     return obs
 
-        print('close gripper')
         def grasp_detected():
             # NOTE:
             # geom.contact_geoms --> cubeA_g0
@@ -156,11 +154,10 @@ class PickAndPlacePrimitive():
                 gripper=gripper,
                 object_geoms=self.env.objects[0]
             )
-            print('grasp success', grasp_success)
             return grasp_success
             
         done = False
-        gripper_act = 1.
+        gripper_act = 2.
         num_steps = 5
         steps = 0
         while not done and not grasp_detected() and steps < num_steps:
@@ -175,7 +172,6 @@ class PickAndPlacePrimitive():
             steps += 1
 
         if grasp_detected():
-            print('grasp detected!')
             return True
         return False
         # return grasp_detected()
@@ -184,9 +180,8 @@ class PickAndPlacePrimitive():
         # TODO: need to know the state of gripper
         # Temporarily, just use 5 steps
 
-        print('open gripper')
         done = False
-        gripper_act = -1
+        gripper_act = -2.
         num_steps = 5 
         steps = 0
         while not done and steps < num_steps:
@@ -334,13 +329,6 @@ if __name__ == '__main__':
     # pick_pose = np.array([0., 0., pick_place.table_height + 0.03, 0., 0., 0.])
     pick_pose = np.array([*pick_pos, 0., 0., 0.])
     place_pose = np.array([*place_pos, 0., 0., 0.])
-
-    # debug
-    # pick_place.move_pos_to(pick_pose)
-    # observations = pick_place.trajectory.observations
-    # close_traj = pick_place.close_gripper()
-    # open_traj = pick_place.open_gripper()
-    # observations = pick_place.trajectory.observations
 
     pick_trajectory, grasp_success = pick_place.pick(pick_pose)
     print('grasp success', grasp_success)
