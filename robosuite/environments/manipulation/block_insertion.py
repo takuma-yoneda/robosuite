@@ -343,9 +343,10 @@ class BlockInsertion(SingleArmEnv):
             self.placement_initializer = UniformRandomSampler(
                 name="ObjectSampler",
                 mujoco_objects=blocks,
-                x_range=[-0.08, 0.08],
-                y_range=[-0.08, 0.08],
-                rotation=None,
+                x_range=[-0.1, 0.1],
+                y_range=[-0.1, 0.1],
+                rotation=(-1/2 * np.pi, 1/2 * np.pi),  # (min, max)
+                rotation_axis='z',  # default: z
                 ensure_object_boundary_in_range=False,
                 # ensure_valid_placement=True,
                 ensure_valid_placement=False,
@@ -389,7 +390,8 @@ class BlockInsertion(SingleArmEnv):
             for obj_pos, obj_quat, obj in object_placements.values():
                 if "visual" in obj.name.lower():
                     self.sim.model.body_pos[self.sim.model.body_name2id(obj.root_body)] = obj_pos
-                    self.sim.model.body_quat[self.sim.model.body_name2id(obj.root_body)] = obj_quat
+                    # TEMP: don't rotate it
+                    # self.sim.model.body_quat[self.sim.model.body_name2id(obj.root_body)] = obj_quat
                 else:
                     self.sim.data.set_joint_qpos(obj.joints[0], np.concatenate([np.array(obj_pos), np.array(obj_quat)]))
 
