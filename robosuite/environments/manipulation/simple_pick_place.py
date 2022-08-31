@@ -243,33 +243,12 @@ class SimplePickPlace(SingleArmEnv):
         
         # reaching is successful when the gripper site is close to the center of the cube
         blockA_pos = self.sim.data.body_xpos[self.blockA_body_id]
-        blockA_quat = convert_quat(np.array(self.sim.data.body_xquat[self.blockA_body_id]), to="xyzw")
         goal_pos = self.sim.data.body_xpos[self.goal_body_id]
-        goal_quat = convert_quat(np.array(self.sim.data.body_xquat[self.goal_body_id]), to="xyzw")
 
         # gripper_site_pos = self.sim.data.site_xpos[self.robots[0].eef_site_id]
         dist = np.linalg.norm(blockA_pos - goal_pos)
-        r_reach = (1 - np.tanh(10.0 * dist)) * 0.25
 
-        from scipy.spatial.transform import Rotation as R
-        # r_aligned = R.from_matrix(R.from_quat(blockA_quat).as_matrix().T @ R.from_quat(cubeB_quat).as_matrix()).magnitude()[-1]
-        rot_magnitude = R.from_matrix(R.from_quat(blockA_quat).as_matrix().T @ R.from_quat(goal_quat).as_matrix()).magnitude()
-        r_aligned = (1 - np.tanh(rot_magnitude)) * 0.25
-
-        # Aligning is successful when cubeA is right above cubeB
-        # if cubeA_lifted:
-        #     horiz_dist = np.linalg.norm(np.array(cubeA_pos[:2]) - np.array(cubeB_pos[:2]))
-        #     r_lift += 0.5 * (1 - np.tanh(horiz_dist))
-        
-
-        # r_reach, r_lift, r_stack = self.staged_rewards()
-        # if self.reward_shaping:
-        #     reward = max(r_reach, r_lift, r_stack)
-        # else:
-        #     reward = 2.0 if r_stack > 0 else 0.0
-
-        # print(f'dist: {dist:.3f}\trot: {rot_magnitude:.3f}')
-        reward = 1.0 if dist < 0.03 and rot_magnitude < (5 * np.pi/180) else 0.0
+        reward = 1.0 if dist < 0.03 else 0.0
 
         return reward
 
