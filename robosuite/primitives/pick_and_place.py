@@ -64,7 +64,7 @@ class PickAndPlacePrimitive():
 
         # robot0_gripper_qpos <-- what's this?
         # robot0_proprio-state <-- what's this??
-        expected_obs_keys = ['robot0_eef_pos', 'robot0_eef_quat', ]
+        expected_obs_keys = ['robot0_eef_pos', 'robot0_eef_quat']
         for key in expected_obs_keys:
             assert key in obs
 

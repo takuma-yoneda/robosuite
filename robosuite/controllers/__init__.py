@@ -11,6 +11,7 @@ CONTROLLER_INFO = {
     "JOINT_POSITION": "Joint Position",
     "OSC_POSITION": "Operational Space Control (Position Only)",
     "OSC_POSE": "Operational Space Control (Position + Orientation)",
+    "OSC_POSE_ABS": "Operational Space Control (Position + Orientation) | control_delta = False",
     "IK_POSE": "Inverse Kinematics Control (Position + Orientation) (Note: must have PyBullet installed)",
 }
 
