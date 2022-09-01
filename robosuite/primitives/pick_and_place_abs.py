@@ -10,7 +10,7 @@ from robosuite.utils.trajectory import Trajectory
 class GripperAction:
     neutral = 0.
     open = -1.
-    close = 1.
+    close = .5
 
 def add_text(img, text, **kwargs):
     import numpy as np
@@ -34,7 +34,8 @@ def add_text(img, text, **kwargs):
 # Output: place position & orientation (world coordinate)
 
 class PickAndPlaceAbsPrimitive():
-    def __init__(self, env, init_obs = None, pregrasp_height: float = 0.1, gripper_step: float = 0.05) -> None:
+    def __init__(self, env, init_obs = None, pregrasp_height: float = 0.1, gripper_step: float = 0.05,
+                 interpolate: bool = False) -> None:
         self.env = env
 
         # TODO: Assert that env's controller expects absolute coordinate (OSC_POSE with control_delta=False)
@@ -54,9 +55,69 @@ class PickAndPlaceAbsPrimitive():
         self.pregrasp_height = pregrasp_height
         self.prev_obs = deepcopy(init_obs)
 
+        self.interpolate = interpolate
+
         # Observation keys
         # (Pdb) p obs.keys()
         # dict_keys(['robot0_joint_pos_cos', 'robot0_joint_pos_sin', 'robot0_joint_vel', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_gripper_qvel', 'frontview_image', 'cubeA_pos', 'cubeA_quat', 'cubeB_pos', 'cubeB_quat', 'gripper_to_cubeA', 'gripper_to_cubeB', 'cubeA_to_cubeB', 'robot0_proprio-state', 'object-state'])
+
+    def move_to(self, target_pose, gripper_action=None, step_size=0.05):
+        import math
+
+        if gripper_action is None:
+            gripper_action = self.env.robots[0].gripper.current_action
+
+        # NOTE: currently orientation is not interpolated!!
+        target_pos, target_ori = target_pose[:3], target_pose[3:]
+
+        to_vec = target_pos - self.gripper_site_pos
+        dist = np.linalg.norm(to_vec)
+        num_interp_points = math.floor(dist / step_size)
+
+        if type(gripper_action) == float:
+            gripper_action = [gripper_action]
+
+        if num_interp_points > 0:
+            # Interpolate!
+            normalized_to_vec = to_vec / dist
+            waypoints = [(i+1) * step_size * normalized_to_vec + self.gripper_site_pos for i in range(num_interp_points)]
+            waypoints += [target_pos]  # Finally reach the target pos
+            for waypoint in waypoints:
+                self.env_step([*waypoint, *target_ori, *gripper_action])
+                if self.trajectory.dones[-1]:
+                    break
+            t = self.trajectory
+            return (t.observations[-1], t.rewards[-1], t.dones[-1], {})
+        else:
+            return self.env_step([*target_pose, *gripper_action])
+
+    def _move_gripper(self, curr_pose, tgt_gripper_action, step_size=0.4):
+        import math
+
+        if type(tgt_gripper_action) == float:
+            tgt_gripper_action = [tgt_gripper_action]
+
+        curr_gripper_action = self.env.robots[0].gripper.current_action
+        diff = tgt_gripper_action - curr_gripper_action
+        sign = np.sign(diff)
+        num_interp_points = math.floor(diff / step_size)
+        if num_interp_points > 0:
+            waypoints = [(i+1) * step_size * sign + curr_gripper_action for i in range(num_interp_points)]
+            waypoints += [tgt_gripper_action]
+            for waypoint in waypoints:
+                self.env_step([*curr_pose, *waypoint])
+                if self.trajectory.dones[-1]:
+                    break
+            t = self.trajectory
+            return (t.observations[-1], t.rewards[-1], t.dones[-1], {})
+        else:
+            return self.env_step([*curr_pose, *tgt_gripper_action])
+
+    def close_gripper(self, curr_pose):
+        self._move_gripper(curr_pose, GripperAction.close)
+
+    def open_gripper(self, curr_pose):
+        self._move_gripper(curr_pose, GripperAction.open)
 
     def env_step(self, action, obs_decorator=None):
         # TODO: save these into arrays
@@ -100,24 +161,38 @@ class PickAndPlaceAbsPrimitive():
         pregrasp_pose = target_pose.copy()
         pregrasp_pose[2] = self.table_height + self.pregrasp_height
 
+        # Set gripper to closed
+        self.close_gripper(curr_pose=pregrasp_pose)
+
         # Move to pregrasp pose and open gripper
-        self.env_step([*pregrasp_pose, GripperAction.close])
-        self.env_step([*pregrasp_pose, GripperAction.open])
+        if self.interpolate:
+            self.move_to(pregrasp_pose)
+        else:
+            self.env_step([*pregrasp_pose, GripperAction.close])
+
+        # Open gripper
+        self.open_gripper(curr_pose=pregrasp_pose)
         if self.trajectory.dones[-1]:
             return deepcopy(self.trajectory), False
 
         # Move down to reach the object
-        self.env_step([*target_pose, GripperAction.open])
+        if self.interpolate:
+            self.move_to(target_pose)
+        else:
+            self.env_step([*target_pose, GripperAction.open])
         if self.trajectory.dones[-1]:
             return deepcopy(self.trajectory), False
 
         # Grasp
-        self.env_step([*target_pose, GripperAction.close])
+        self.close_gripper(curr_pose=target_pose)
         if self.trajectory.dones[-1]:
             return deepcopy(self.trajectory), False
 
         # Move the fingers up to the pregrasp pose
-        self.env_step([*pregrasp_pose, GripperAction.close])
+        if self.interpolate:
+            self.move_to(pregrasp_pose)
+        else:
+            self.env_step([*pregrasp_pose, GripperAction.close])
         if self.trajectory.dones[-1]:
             return deepcopy(self.trajectory), False
 
@@ -145,21 +220,39 @@ class PickAndPlaceAbsPrimitive():
         preplace_pose = target_pose.copy()
         preplace_pose[2] = self.table_height + self.pregrasp_height
 
+        # Gripper must be closed already
+        curr_gripper_act = self.env.robots[0].gripper.current_action
+        # assert abs(curr_gripper_act - GripperAction.close) < 1e-2, f'current gripper act: {curr_gripper_act} vs GripperAction.close: {GripperAction.close}'
+
         # Move the gripper above the goal location
-        self.env_step([*preplace_pose, GripperAction.close])
+        if self.interpolate:
+            self.move_to(preplace_pose)
+        else:
+            self.env_step([*preplace_pose, GripperAction.close])
         if self.trajectory.dones[-1]:
             return deepcopy(self.trajectory)
 
         # Move down to reach the object and release gripper
-        self.env_step([*target_pose, GripperAction.close])
-        self.env_step([*target_pose, GripperAction.open])
+        if self.interpolate:
+            self.move_to(target_pose)
+        else:
+            self.env_step([*target_pose, GripperAction.close])
+
+        # Open gripper
+        self.open_gripper(target_pose)
         if self.trajectory.dones[-1]:
             return deepcopy(self.trajectory)
 
         # Move back to preplace pose
-        self.env_step([*preplace_pose, GripperAction.close])
+        if self.interpolate:
+            self.move_to(preplace_pose)
+        else:
+            self.env_step([*preplace_pose, GripperAction.close])
         if self.trajectory.dones[-1]:
             return deepcopy(self.trajectory)
+
+        # Close gripper
+        self.close_gripper(preplace_pose)
 
         # Return trajectory history so far.
         import time
@@ -190,7 +283,7 @@ if __name__ == '__main__':
     env = suite.make(
         env_name="Stack",
         robots="UR5e",
-        gripper_types="RobotiqThreeFingerGripper",
+        gripper_types="RobotiqThreeFingerAbsoluteGripper",
         has_renderer=False,
         has_offscreen_renderer=True,
         use_camera_obs=True,
@@ -200,11 +293,11 @@ if __name__ == '__main__':
         camera_widths=640,
         controller_configs=osc_pose_abs,
         horizon=200,
-        control_freq=10
+        control_freq=5
     )
 
     obs = env.reset()
-    pick_place = PickAndPlaceAbsPrimitive(env, init_obs=obs)
+    pick_place = PickAndPlaceAbsPrimitive(env, init_obs=obs, interpolate=True)
 
     pick_pos = obs['cubeA_pos']
     place_pos = obs['cubeB_pos']
@@ -223,6 +316,7 @@ if __name__ == '__main__':
 
     # pick_pose = np.array([0., 0., pick_place.table_height + 0.03, 0., 0., 0.])
     pick_pose = np.array([*pick_pos, *curr_ori])
+    place_pose = np.array([*place_pos, *curr_ori])
 
     # Twist by 90 degree
     # print('curr_ori', curr_ori)
@@ -230,26 +324,25 @@ if __name__ == '__main__':
     # print(rx, ry, rz)
     # place_pose = np.array([*place_pos, rx, ry - 0.5 * np.pi, rz])
 
-    # pick_trajectory, grasp_success = pick_place.pick(pick_pose, env.cubeA)
+    pick_trajectory, grasp_success = pick_place.pick(pick_pose, env.cubeA)
     
 
-    gripper_site_pos = env.sim.data.site_xpos[env.robots[0].eef_site_id]
-    gripper_site_quat = env.sim.data.body_xquat[env.robots[0].eef_site_id]
-    print('gripper_site_pos', gripper_site_pos, pick_place.gripper_site_pos)
-    print('gripper_site_quat', gripper_site_quat, pick_place.gripper_site_quat)
-    rx, ry, rz = R.from_quat(gripper_site_quat).as_euler('xyz')
-    print('euler', rx, ry, rz)
-    for i in range(10):
-        pick_place.env_step([*gripper_site_pos, rx, ry, i/10 * 2 * np.pi - np.pi, 0.])
-    observations = pick_place.trajectory.observations
+    # gripper_site_pos = env.sim.data.site_xpos[env.robots[0].eef_site_id]
+    # gripper_site_quat = env.sim.data.body_xquat[env.robots[0].eef_site_id]
+    # print('gripper_site_pos', gripper_site_pos, pick_place.gripper_site_pos)
+    # print('gripper_site_quat', gripper_site_quat, pick_place.gripper_site_quat)
+    # rx, ry, rz = R.from_quat(gripper_site_quat).as_euler('xyz')
+    # print('euler', rx, ry, rz)
+    # for i in range(10):
+    #     pick_place.env_step([*gripper_site_pos, rx, ry, i/10 * 2 * np.pi - np.pi, 0.])
+    # observations = pick_place.trajectory.observations
 
-    # TEMP
-    # print('grasp success', grasp_success)
-    # if not pick_trajectory.dones[-1]:
-    #     place_trajectory = pick_place.place(place_pose)
-    # else:
-    #     place_trajectory = Trajectory()
-    # observations = pick_trajectory.observations + place_trajectory.observations
+    print('grasp success', grasp_success)
+    if not pick_trajectory.dones[-1]:
+        place_trajectory = pick_place.place(place_pose)
+    else:
+        place_trajectory = Trajectory()
+    observations = pick_trajectory.observations + place_trajectory.observations
 
     # (256, 256, 3) -> (3, 256, 256)
     # frames = [obs[f'{cam}_image'].transpose(2, 1, 0) for obs in observations]

@@ -297,7 +297,7 @@ class FixedPickPlace(SingleArmEnv):
         )
         self.blockA = BoxObject(
             name="blockA",
-            size=[0.03, 0.03, 0.03],
+            size=[0.03, 0.08, 0.03],
             # size_min=[0.02, 0.02, 0.02],
             # size_max=[0.02, 0.02, 0.02],
             rgba=[1, 0, 0, 1],
@@ -305,7 +305,7 @@ class FixedPickPlace(SingleArmEnv):
         )
         self.goal = BoxObject(
             name="visual_goal",
-            size=[0.03, 0.03, 0.03],
+            size=[0.03, 0.08, 0.03],
             # size_min=[0.025, 0.025, 0.025],
             # size_max=[0.025, 0.025, 0.025],
             rgba=[0, 1, 0, 0.4],
@@ -322,8 +322,8 @@ class FixedPickPlace(SingleArmEnv):
             self.placement_initializer = UniformRandomSampler(
                 name="ObjectSampler",
                 mujoco_objects=blocks,
-                x_range=[0.1, 0.1],
-                y_range=[0.1, 0.1],
+                x_range=[-0.1, 0.1],
+                y_range=[-0.1, 0.1],
                 rotation=(0, 0),  # (min, max)
                 rotation_axis='z',  # default: z
                 ensure_object_boundary_in_range=False,
@@ -424,7 +424,11 @@ class FixedPickPlace(SingleArmEnv):
             def gripper_collision(obs_cache):
                 return np.asarray([self._grasp_detected()])
 
-            sensors = [blockA_pos, goal_pos, gripper_collision]
+            @sensor(modality=modality)
+            def gripper_state(obs_cache):
+                return self.robots[0].gripper.current_action
+
+            sensors = [blockA_pos, goal_pos, gripper_collision, gripper_state]
             names = [s.__name__ for s in sensors]
 
             # Create observables

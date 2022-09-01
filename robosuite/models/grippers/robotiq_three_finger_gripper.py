@@ -85,6 +85,32 @@ class RobotiqThreeFingerGripper(RobotiqThreeFingerGripperBase):
         return 1
 
 
+class RobotiqThreeFingerAbsoluteGripper(RobotiqThreeFingerGripperBase):
+    """
+    A variant of RobotiqThreeFingerGripperBase that specifies absolute value for the action
+    """
+
+    def format_action(self, action):
+        """
+        Maps continuous action into binary output
+        -1 => open, 1 => closed
+
+        Args:
+            action (np.array): gripper-specific action
+
+        Raises:
+            AssertionError: [Invalid action dimension size]
+        """
+        assert len(action) == self.dof
+        self.current_action = np.clip(np.array(action), -1.0, 1.0)
+        # Automatically set the scissor joint to "closed" position by default
+        return np.concatenate([self.current_action * np.ones(3), [-1]])
+
+    @property
+    def dof(self):
+        return 1
+
+
 class RobotiqThreeFingerDexterousGripper(RobotiqThreeFingerGripperBase):
     """
     Dexterous variation of the 3-finger Robotiq gripper in which all finger are actuated independently as well
