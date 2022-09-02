@@ -383,15 +383,22 @@ class FixedPickPlace(SingleArmEnv):
         # NOTE: Explicitly list each geometry in both fingerpads.
         # left_fingerpad consists of two fingertips, and right_fingerpad has one.
         # Without this, check_grasp returns True even when an object is contact with two fingertips: one on the right_fingerpad and another on left_fingerpad.
-        # _gripper = self.robots[0].gripper
-        # gripper = [*_gripper.important_geoms['left_fingerpad'], *_gripper.important_geoms['right_fingerpad']]
+        _gripper = self.robots[0].gripper
+        gripper = [*_gripper.important_geoms['left_fingerpad'], *_gripper.important_geoms['right_fingerpad']]
 
-        gripper = self.robots[0].gripper
 
         grasp_success = self._check_grasp(
             gripper=gripper,
             object_geoms=self.blockA
         )
+        print('grasp_success', grasp_success)
+
+        gripper = self.robots[0].gripper
+        _grasp_success = self._check_grasp(
+            gripper=gripper,
+            object_geoms=self.blockA
+        )
+        print('_grasp_success', _grasp_success)
         return grasp_success
             
     def _setup_observables(self):

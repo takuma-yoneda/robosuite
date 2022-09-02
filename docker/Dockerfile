@@ -81,6 +81,7 @@ RUN python -c 'import mujoco_py'
 # Required by IK_POSE controller
 RUN pip install pybullet-svl>=3.1.6.4
 RUN pip install opencv-python
+RUN pip install gym
 
 # NOTE: Dockerfile is so counter-intuitive.
 # `COPY ./vendor .` or `COPY ./vendor ./` copies the contents of ./vendor to .

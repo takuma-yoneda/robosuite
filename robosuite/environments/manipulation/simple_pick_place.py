@@ -297,7 +297,7 @@ class SimplePickPlace(SingleArmEnv):
         )
         self.blockA = BoxObject(
             name="blockA",
-            size=[0.03, 0.03, 0.03],
+            size=[0.03, 0.08, 0.03],
             # size_min=[0.02, 0.02, 0.02],
             # size_max=[0.02, 0.02, 0.02],
             rgba=[1, 0, 0, 1],
@@ -305,7 +305,7 @@ class SimplePickPlace(SingleArmEnv):
         )
         self.goal = BoxObject(
             name="visual_goal",
-            size=[0.03, 0.03, 0.03],
+            size=[0.03, 0.08, 0.03],
             # size_min=[0.025, 0.025, 0.025],
             # size_max=[0.025, 0.025, 0.025],
             rgba=[0, 1, 0, 0.4],
@@ -368,7 +368,8 @@ class SimplePickPlace(SingleArmEnv):
             # Ref: https://github.com/ARISE-Initiative/robosuite/blob/940591fabaf40f8d7dbfa67ae7251d476f50f42c/robosuite/environments/manipulation/pick_place.py#L680
             for obj_pos, obj_quat, obj in object_placements.values():
                 if "visual" in obj.name.lower():
-                    self.sim.model.body_pos[self.sim.model.body_name2id(obj.root_body)] = obj_pos
+                    # NOTE: hardcoded
+                    self.sim.model.body_pos[self.sim.model.body_name2id(obj.root_body)] = (0., 0., obj_pos[2])
                     # TEMP: don't rotate it
                     # self.sim.model.body_quat[self.sim.model.body_name2id(obj.root_body)] = obj_quat
                 else:
@@ -382,12 +383,17 @@ class SimplePickPlace(SingleArmEnv):
         # NOTE: Explicitly list each geometry in both fingerpads.
         # left_fingerpad consists of two fingertips, and right_fingerpad has one.
         # Without this, check_grasp returns True even when an object is contact with two fingertips: one on the right_fingerpad and another on left_fingerpad.
-        # _gripper = self.robots[0].gripper
-        # gripper = [*_gripper.important_geoms['left_fingerpad'], *_gripper.important_geoms['right_fingerpad']]
+        _gripper = self.robots[0].gripper
+        gripper = [*_gripper.important_geoms['left_fingerpad'], *_gripper.important_geoms['right_fingerpad']]
 
-        gripper = self.robots[0].gripper
 
         grasp_success = self._check_grasp(
+            gripper=gripper,
+            object_geoms=self.blockA
+        )
+
+        gripper = self.robots[0].gripper
+        _grasp_success = self._check_grasp(
             gripper=gripper,
             object_geoms=self.blockA
         )
@@ -423,7 +429,11 @@ class SimplePickPlace(SingleArmEnv):
             def gripper_collision(obs_cache):
                 return np.asarray([self._grasp_detected()])
 
-            sensors = [blockA_pos, goal_pos, gripper_collision]
+            @sensor(modality=modality)
+            def gripper_state(obs_cache):
+                return self.robots[0].gripper.current_action
+
+            sensors = [blockA_pos, goal_pos, gripper_collision, gripper_state]
             names = [s.__name__ for s in sensors]
 
             # Create observables

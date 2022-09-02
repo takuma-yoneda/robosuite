@@ -119,6 +119,11 @@ class PickAndPlaceAbsPrimitive():
     def open_gripper(self, curr_pose):
         self._move_gripper(curr_pose, GripperAction.open)
 
+    def get_full_trajectory(self):
+        # Add the final observation to trajectory and return it
+        self.trajectory.observations.append(self.prev_obs)
+        return deepcopy(self.trajectory)
+
     def env_step(self, action, obs_decorator=None):
         # TODO: save these into arrays
         obs, rew, done, info = self.env.step(action)
@@ -127,7 +132,7 @@ class PickAndPlaceAbsPrimitive():
             assert callable(obs_decorator)
             obs = obs_decorator(obs)
 
-        self.trajectory.add_transition(obs, action, rew, done, info)
+        self.trajectory.add_transition(self.prev_obs, action, rew, done, info)
 
         # robot0_gripper_qpos <-- what's this?
         # robot0_proprio-state <-- what's this??
@@ -173,7 +178,7 @@ class PickAndPlaceAbsPrimitive():
         # Open gripper
         self.open_gripper(curr_pose=pregrasp_pose)
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory), False
+            return self.get_full_trajectory(), False
 
         # Move down to reach the object
         if self.interpolate:
@@ -181,12 +186,12 @@ class PickAndPlaceAbsPrimitive():
         else:
             self.env_step([*target_pose, GripperAction.open])
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory), False
+            return self.get_full_trajectory(), False
 
         # Grasp
         self.close_gripper(curr_pose=target_pose)
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory), False
+            return self.get_full_trajectory(), False
 
         # Move the fingers up to the pregrasp pose
         if self.interpolate:
@@ -194,19 +199,20 @@ class PickAndPlaceAbsPrimitive():
         else:
             self.env_step([*pregrasp_pose, GripperAction.close])
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory), False
+            return self.get_full_trajectory(), False
 
-        grasp_success = self.env._check_grasp(gripper=self.env.robots[0].gripper, object_geoms=target_object_geoms)
+        # TODO: This can only work a single wrapper!
+        try:
+            _check_grasp = self.env._check_grasp
+        except AttributeError:
+            _check_grasp = self.env.env._check_grasp
+        grasp_success = _check_grasp(gripper=self.env.robots[0].gripper, object_geoms=target_object_geoms)
+            
         # Check if grasp succeeded
         # If not, return False (success = False)
 
         # Return trajectory history so far.
-        import time
-        started = time.time()
-        traj = deepcopy(self.trajectory)
-        elapsed = time.time() - started
-        print(f'deepcopy took {elapsed:.2f} seconds')
-        return traj, grasp_success
+        return self.get_full_trajectory(), grasp_success
 
     def place(self, target_pose):
         # 1. Assert that grip is True
@@ -230,7 +236,7 @@ class PickAndPlaceAbsPrimitive():
         else:
             self.env_step([*preplace_pose, GripperAction.close])
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory)
+            return self.get_full_trajectory()
 
         # Move down to reach the object and release gripper
         if self.interpolate:
@@ -241,7 +247,7 @@ class PickAndPlaceAbsPrimitive():
         # Open gripper
         self.open_gripper(target_pose)
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory)
+            return self.get_full_trajectory()
 
         # Move back to preplace pose
         if self.interpolate:
@@ -249,18 +255,13 @@ class PickAndPlaceAbsPrimitive():
         else:
             self.env_step([*preplace_pose, GripperAction.close])
         if self.trajectory.dones[-1]:
-            return deepcopy(self.trajectory)
+            return self.get_full_trajectory()
 
         # Close gripper
         self.close_gripper(preplace_pose)
 
         # Return trajectory history so far.
-        import time
-        started = time.time()
-        traj = deepcopy(self.trajectory)
-        elapsed = time.time() - started
-        print(f'deepcopy took {elapsed:.2f} seconds')
-        return traj
+        return self.get_full_trajectory()
 
 
 if __name__ == '__main__':
