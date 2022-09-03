@@ -164,6 +164,7 @@ class PickPlace(SingleArmEnv):
         camera_segmentations=None,  # {None, instance, class, element}
         renderer="mujoco",
         renderer_config=None,
+        randomize_goal=False
     ):
         # settings for table top
         self.table_full_size = table_full_size
@@ -179,6 +180,8 @@ class PickPlace(SingleArmEnv):
 
         # object placement initializer
         self.placement_initializer = placement_initializer
+
+        self.randomize_goal = randomize_goal
 
         super().__init__(
             robots=robots,
@@ -368,10 +371,14 @@ class PickPlace(SingleArmEnv):
             # Ref: https://github.com/ARISE-Initiative/robosuite/blob/940591fabaf40f8d7dbfa67ae7251d476f50f42c/robosuite/environments/manipulation/pick_place.py#L680
             for obj_pos, obj_quat, obj in object_placements.values():
                 if "visual" in obj.name.lower():
-                    # NOTE: hardcoded
-                    self.sim.model.body_pos[self.sim.model.body_name2id(obj.root_body)] = (0., 0., obj_pos[2])
-                    # TEMP: don't rotate it
-                    # self.sim.model.body_quat[self.sim.model.body_name2id(obj.root_body)] = obj_quat
+                    if self.randomize_goal:
+                        self.sim.model.body_pos[self.sim.model.body_name2id(obj.root_body)] = obj_pos
+                        self.sim.model.body_quat[self.sim.model.body_name2id(obj.root_body)] = obj_quat
+                    else:
+                        # NOTE: hardcoded
+                        self.sim.model.body_pos[self.sim.model.body_name2id(obj.root_body)] = (0., 0., obj_pos[2])
+                        # TEMP: don't rotate it
+                        # self.sim.model.body_quat[self.sim.model.body_name2id(obj.root_body)] = obj_quat
                 else:
                     self.sim.data.set_joint_qpos(obj.joints[0], np.concatenate([np.array(obj_pos), np.array(obj_quat)]))
 
@@ -392,11 +399,6 @@ class PickPlace(SingleArmEnv):
             object_geoms=self.blockA
         )
 
-        gripper = self.robots[0].gripper
-        _grasp_success = self._check_grasp(
-            gripper=gripper,
-            object_geoms=self.blockA
-        )
         return grasp_success
             
     def _setup_observables(self):
@@ -427,6 +429,10 @@ class PickPlace(SingleArmEnv):
             def goal_pos(obs_cache):
                 return np.array(self.sim.data.body_xpos[self.goal_body_id])
 
+            @sensor(modality=modality)
+            def goal_quat(obs_cache):
+                return convert_quat(np.array(self.sim.data.body_xquat[self.goal_body_id]), to="xyzw")
+
             # Collision detection
             # NOTE: I don't think modality is correct here, but this seems to be just a meta info
             @sensor(modality=modality)
@@ -437,7 +443,7 @@ class PickPlace(SingleArmEnv):
             def gripper_state(obs_cache):
                 return self.robots[0].gripper.current_action
 
-            sensors = [blockA_pos, blockA_quat, goal_pos, gripper_collision, gripper_state]
+            sensors = [blockA_pos, blockA_quat, goal_pos, goal_quat, gripper_collision, gripper_state]
             names = [s.__name__ for s in sensors]
 
             # Create observables

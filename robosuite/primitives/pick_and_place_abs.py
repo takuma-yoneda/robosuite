@@ -121,7 +121,7 @@ class PickAndPlaceAbsPrimitive():
 
     def get_full_trajectory(self):
         # Add the final observation to trajectory and return it
-        self.trajectory.observations.append(self.prev_obs)
+        # self.trajectory.observations.append(self.prev_obs)
         return deepcopy(self.trajectory)
 
     def env_step(self, action, obs_decorator=None):

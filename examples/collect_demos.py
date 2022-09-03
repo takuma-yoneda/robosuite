@@ -51,11 +51,13 @@ def rollout_trajectory(env):
     pick_place = PickAndPlaceAbsPrimitive(env, init_obs=obs, pregrasp_height=0.2, interpolate=True)
     pick_pos, pick_quat = obs['blockA_pos'], obs['blockA_quat']
     place_pos = obs['goal_pos']
+    goal_quat = obs['goal_quat']
+    goal_ori = R.from_quat(goal_quat).as_euler('xyz')
     cube_halfsize = obs['blockA_pos'][2] - pick_place.table_height
     block_ori = R.from_quat(pick_quat).as_euler('xyz')
     pick_ori = np.array([gripper_ori[0], gripper_ori[1], block_ori[2] - np.pi / 2])
     pick_pos[2] = pick_place.table_height + 0.02
-    place_ori = np.array([gripper_ori[0], gripper_ori[1], - np.pi / 2])
+    place_ori = np.array([gripper_ori[0], gripper_ori[1], goal_ori[2] - np.pi / 2])
     place_pos[2] += cube_halfsize
 
     pick_pose = np.array([*pick_pos, *pick_ori])
@@ -64,6 +66,9 @@ def rollout_trajectory(env):
     pick_trajectory, grasp_success = pick_place.pick(pick_pose, env.blockA)
     print('grasp success', grasp_success)
     print('grasp success (obs)', [obs['gripper_collision'] for obs in pick_trajectory.observations])
+
+    # NOTE: Mark the end of pick trajectory
+    pick_trajectory.infos[-1].update({'pick_ends': True})
     if not pick_trajectory.dones[-1]:
         place_trajectory = pick_place.place(place_pose)
     else:
@@ -74,29 +79,12 @@ def rollout_trajectory(env):
     return pick_trajectory + place_trajectory
 
 
-def main(env_name, gripper_types, control_freq, horizon, num_episodes):
-    save_dir = Path(os.getenv('RMX_MOUNT_DIR')) / 'trajectories' / env_name
+def main(env_config, num_episodes, save_dir):
     save_dir.mkdir(exist_ok=True, parents=True)
-    controller_config = suite.load_controller_config(default_controller='OSC_POSE_ABS')
 
     # cam_names=['frontview', 'agentview', 'leftview', 'rightview']
-    cam_names=['agentview']
     env = suite.make(
-        env_name=env_name,
-        robots="UR5e",
-        gripper_types=gripper_types,
-        has_renderer=False,
-        has_offscreen_renderer=True,
-        use_camera_obs=True,
-        # camera_names=[front_cam, agent_cam],
-        # camera_names=['frontview', 'agentview', 'leftview', 'rightview'],
-        camera_names=cam_names,
-        camera_depths=True,
-        camera_heights=480,
-        camera_widths=640,
-        control_freq=control_freq,
-        controller_configs=controller_config,
-        horizon=horizon
+        **env_config
     )
 
     env = GripperAbsRotWrapper(env)
@@ -131,19 +119,42 @@ def main(env_name, gripper_types, control_freq, horizon, num_episodes):
         })
         idx += 1
 
+
 if __name__ == '__main__':
+    env_name = "PickPlace"
+    randomize_goal = True
     config = dict(
-        num_episodes=200,
-        horizon=50,
-        env_name="PickPlace",
-        gripper_types="RobotiqThreeFingerAbsoluteGripper",
-        control_freq=1
+        num_episodes=500,
+        save_dir = Path(os.getenv('RMX_MOUNT_DIR')) / 'trajectories' / env_name,
+        env_config = dict(
+            env_name=env_name,
+            robots="UR5e",
+            gripper_types="RobotiqThreeFingerAbsoluteGripper",
+            has_renderer=False,
+            has_offscreen_renderer=True,
+            use_camera_obs=True,
+            # camera_names=[front_cam, agent_cam],
+            # camera_names=['frontview', 'agentview', 'leftview', 'rightview'],
+            camera_names=['agentview'],
+            camera_depths=True,
+            camera_heights=480,
+            camera_widths=640,
+            control_freq=1,
+            controller_configs=suite.load_controller_config(default_controller='OSC_POSE_ABS'),
+            horizon=50,
+            randomize_goal=randomize_goal
+        )
     )
+
+    if randomize_goal:
+        config.update(
+            {'save_dir': Path(os.getenv('RMX_MOUNT_DIR')) / 'trajectories' / 'trajectories_randgoal' / env_name}
+        )
 
     wandb.login()  # NOTE: You need to set envvar WANDB_API_KEY
     wandb.init(
         # Set the project where this run will be logged
-        project='robosuite-test',
+        project='robosuite-demos',
         # Track hyperparameters and run metadata
         config=config
         # config=ars(Args),
