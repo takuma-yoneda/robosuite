@@ -164,7 +164,8 @@ class PickPlace(SingleArmEnv):
         camera_segmentations=None,  # {None, instance, class, element}
         renderer="mujoco",
         renderer_config=None,
-        randomize_goal=False
+        randomize_goal=False,
+        goal_rgba=(0, 1, 0, 0.4)
     ):
         # settings for table top
         self.table_full_size = table_full_size
@@ -182,6 +183,7 @@ class PickPlace(SingleArmEnv):
         self.placement_initializer = placement_initializer
 
         self.randomize_goal = randomize_goal
+        self.goal_rgba = goal_rgba
 
         super().__init__(
             robots=robots,
@@ -311,7 +313,7 @@ class PickPlace(SingleArmEnv):
             size=[0.03, 0.08, 0.03],
             # size_min=[0.025, 0.025, 0.025],
             # size_max=[0.025, 0.025, 0.025],
-            rgba=[0, 1, 0, 0.4],
+            rgba=self.goal_rgba,
             obj_type='visual',
             joints=None,
         )
