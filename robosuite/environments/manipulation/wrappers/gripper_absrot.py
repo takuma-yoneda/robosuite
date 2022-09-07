@@ -1,5 +1,5 @@
 import numpy as np
-from gym import ActionWrapper
+from robosuite.wrappers import ActionWrapper
 from scipy.spatial.transform import Rotation as R
 import robosuite.utils.transform_utils as T
     
