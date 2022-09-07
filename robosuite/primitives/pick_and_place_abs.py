@@ -202,11 +202,12 @@ class PickAndPlaceAbsPrimitive():
             return self.get_full_trajectory(), False
 
         # TODO: This can only work a single wrapper!
-        try:
-            _check_grasp = self.env._check_grasp
-        except AttributeError:
-            _check_grasp = self.env.env._check_grasp
-        grasp_success = _check_grasp(gripper=self.env.robots[0].gripper, object_geoms=target_object_geoms)
+        # try:
+        #     _check_grasp = self.env._check_grasp
+        # except AttributeError:
+        #     _check_grasp = self.env.env._check_grasp
+        
+        grasp_success = self.env._check_grasp(gripper=self.env.robots[0].gripper, object_geoms=target_object_geoms)
             
         # Check if grasp succeeded
         # If not, return False (success = False)

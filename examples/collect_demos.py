@@ -5,6 +5,7 @@ import torch
 from pathlib import Path
 import numpy as np
 from robosuite.environments.manipulation.wrappers import GripperAbsRotWrapper
+from robosuite.environments.manipulation.wrappers.noisy_action import NoisyActionWrapper
 # import diffuser.datasets as datasets
 from robosuite.primitives import PickAndPlaceAbsPrimitive
 from robosuite.utils.trajectory import Trajectory
@@ -68,7 +69,6 @@ def rollout_trajectory(env):
     print('grasp success (obs)', [obs['gripper_collision'] for obs in pick_trajectory.observations])
 
     # NOTE: Mark the end of pick trajectory
-    pick_trajectory.infos[-1].update({'pick_ends': True})
     if not pick_trajectory.dones[-1]:
         place_trajectory = pick_place.place(place_pose)
     else:
@@ -79,7 +79,7 @@ def rollout_trajectory(env):
     return pick_trajectory + place_trajectory
 
 
-def main(env_config, num_episodes, save_dir):
+def main(env_config, num_episodes, save_dir, noisy=False):
     save_dir.mkdir(exist_ok=True, parents=True)
 
     # cam_names=['frontview', 'agentview', 'leftview', 'rightview']
@@ -88,15 +88,17 @@ def main(env_config, num_episodes, save_dir):
     )
 
     env = GripperAbsRotWrapper(env)
+    if noisy:
+        env = NoisyActionWrapper(env)
 
     idx = 0
     while idx < num_episodes:
         trajectory = rollout_trajectory(env)
         sum_rewards = sum(trajectory.rewards)
         print(f'ep_len: {len(trajectory.observations)}\tsum_rewards: {sum_rewards}')
-        if sum_rewards == 0:
-            print('sum_rewards is zero!! trying again.')
-            continue
+        # if sum_rewards == 0:
+        #     print('sum_rewards is zero!! trying again.')
+        #     continue
 
         # NOTE: Why I didn't have this before and still had no issues???
         trajectory.dones[-1] = True
@@ -123,9 +125,11 @@ def main(env_config, num_episodes, save_dir):
 if __name__ == '__main__':
     env_name = "PickPlace"
     randomize_goal = True
+    noisy = True
     config = dict(
         num_episodes=500,
-        save_dir = Path(os.getenv('RMX_MOUNT_DIR')) / 'trajectories' / env_name,
+        save_dir=Path(os.getenv('RMX_MOUNT_DIR')) / 'trajectories' / env_name,
+        noisy=noisy,
         env_config = dict(
             env_name=env_name,
             robots="UR5e",
@@ -149,6 +153,11 @@ if __name__ == '__main__':
     if randomize_goal:
         config.update(
             {'save_dir': Path(os.getenv('RMX_MOUNT_DIR')) / 'trajectories' / 'trajectories_randgoal' / env_name}
+        )
+
+    if noisy:
+        config.update(
+            {'save_dir': Path(os.getenv('RMX_MOUNT_DIR')) / 'trajectories' / 'trajectories_noisy' / env_name}
         )
 
     wandb.login()  # NOTE: You need to set envvar WANDB_API_KEY
