@@ -96,9 +96,9 @@ def main(env_config, num_episodes, save_dir, noisy=False):
         trajectory = rollout_trajectory(env)
         sum_rewards = sum(trajectory.rewards)
         print(f'ep_len: {len(trajectory.observations)}\tsum_rewards: {sum_rewards}')
-        # if sum_rewards == 0:
-        #     print('sum_rewards is zero!! trying again.')
-        #     continue
+        if sum_rewards == 0:
+            print('sum_rewards is zero!! trying again.')
+            continue
 
         # NOTE: Why I didn't have this before and still had no issues???
         trajectory.dones[-1] = True
@@ -126,8 +126,9 @@ if __name__ == '__main__':
     env_name = "PickPlace"
     randomize_goal = True
     noisy = True
+    num_episodes = 5000
     config = dict(
-        num_episodes=500,
+        num_episodes=num_episodes,
         save_dir=Path(os.getenv('RMX_MOUNT_DIR')) / 'trajectories' / env_name,
         noisy=noisy,
         env_config = dict(
@@ -157,7 +158,7 @@ if __name__ == '__main__':
 
     if noisy:
         config.update(
-            {'save_dir': Path(os.getenv('RMX_MOUNT_DIR')) / 'trajectories' / 'trajectories_noisy' / env_name}
+            {'save_dir': Path(os.getenv('RMX_MOUNT_DIR')) / 'trajectories' / f'trajectories_noisy_{num_episodes}' / env_name}
         )
 
     wandb.login()  # NOTE: You need to set envvar WANDB_API_KEY
@@ -173,4 +174,3 @@ if __name__ == '__main__':
     main(**config)
 
     wandb.finish()
-

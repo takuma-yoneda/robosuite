@@ -49,7 +49,18 @@ from robosuite.controllers import load_controller_config
 from robosuite.robots import Bimanual
 from robosuite.utils.input_utils import *
 
+
 if __name__ == "__main__":
+    import wandb
+    wandb.login()  # NOTE: You need to set envvar WANDB_API_KEY
+    wandb.init(
+        # Set the project where this run will be logged
+        project='robosuite-test',
+        # Track hyperparameters and run metadata
+        # config=vars(Args),
+        # resume=True,
+        # id=wandb_runid
+    )
 
     # Create dict to hold options that will be passed to env creation call
     options = {}
@@ -116,17 +127,19 @@ if __name__ == "__main__":
     print('Press "H" to show the viewer control panel.')
 
     # initialize the task
+    cam = 'frontview'
     env = suite.make(
         **options,
-        has_renderer=True,
-        has_offscreen_renderer=False,
+        has_renderer=False,
+        has_offscreen_renderer=True,
         ignore_done=True,
-        use_camera_obs=False,
+        use_camera_obs=True,
         horizon=(steps_per_action + steps_per_rest) * num_test_steps,
         control_freq=20,
+        camera_names=cam,
     )
     env.reset()
-    env.viewer.set_camera(camera_id=0)
+    # env.viewer.set_camera(camera_id=0)
 
     # To accommodate for multi-arm settings (e.g.: Baxter), we need to make sure to fill any extra action space
     # Get total number of arms being controlled
@@ -141,6 +154,7 @@ if __name__ == "__main__":
 
     # Keep track of done variable to know when to break loop
     count = 0
+    obss = []
     # Loop through controller space
     while count < num_test_steps:
         action = neutral.copy()
@@ -153,13 +167,18 @@ if __name__ == "__main__":
             else:
                 action[count] = test_value
             total_action = np.tile(action, n)
-            env.step(total_action)
-            env.render()
+            obs, _, _, _ = env.step(total_action)
+            obss.append(obs[f'{cam}_image'].transpose(2, 0, 1))
+            # env.render()
         for i in range(steps_per_rest):
             total_action = np.tile(neutral, n)
-            env.step(total_action)
-            env.render()
+            obs, _, _, _ = env.step(total_action)
+            obss.append(obs[f'{cam}_image'].transpose(2, 0, 1))
+            # env.render()
         count += 1
 
     # Shut down this env before starting the next test
     env.close()
+
+    wandb.log({'video': wandb.Video(np.asarray(obss), format='mp4', fps=20)})
+    wandb.finish()

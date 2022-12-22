@@ -90,5 +90,6 @@ COPY ./vendor ./vendor
 
 # Instead of doing this, specify PYTHONPATH at runtime.
 # RUN pip install robosuite
+RUN chmod -R a+w /usr/local/lib/python3.8/dist-packages/mujoco_py/generated
 
 ENTRYPOINT ["/mujoco_py/vendor/Xdummy-entrypoint"]

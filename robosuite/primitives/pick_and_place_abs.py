@@ -61,7 +61,7 @@ class PickAndPlaceAbsPrimitive():
         # (Pdb) p obs.keys()
         # dict_keys(['robot0_joint_pos_cos', 'robot0_joint_pos_sin', 'robot0_joint_vel', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_gripper_qvel', 'frontview_image', 'cubeA_pos', 'cubeA_quat', 'cubeB_pos', 'cubeB_quat', 'gripper_to_cubeA', 'gripper_to_cubeB', 'cubeA_to_cubeB', 'robot0_proprio-state', 'object-state'])
 
-    def move_to(self, target_pose, gripper_action=None, step_size=0.05):
+    def move_to(self, target_pose, gripper_action=None, step_size=0.05, info=None):
         import math
 
         if gripper_action is None:
@@ -87,12 +87,15 @@ class PickAndPlaceAbsPrimitive():
                 if self.trajectory.dones[-1]:
                     break
             t = self.trajectory
-            return (t.observations[-1], t.rewards[-1], t.dones[-1], {})
+            info = {} if info is None else info
+            assert type(info) == dict
+            return (t.observations[-1], t.rewards[-1], t.dones[-1], info)
         else:
             return self.env_step([*target_pose, *gripper_action])
 
-    def _move_gripper(self, curr_pose, tgt_gripper_action, step_size=0.4):
+    def _move_gripper(self, curr_pose, tgt_gripper_action, step_size=0.4, info=None):
         import math
+        info = {} if info is None else info
 
         if type(tgt_gripper_action) == float:
             tgt_gripper_action = [tgt_gripper_action]
@@ -105,13 +108,13 @@ class PickAndPlaceAbsPrimitive():
             waypoints = [(i+1) * step_size * sign + curr_gripper_action for i in range(num_interp_points)]
             waypoints += [tgt_gripper_action]
             for waypoint in waypoints:
-                self.env_step([*curr_pose, *waypoint])
+                self.env_step([*curr_pose, *waypoint], info=info)
                 if self.trajectory.dones[-1]:
                     break
             t = self.trajectory
-            return (t.observations[-1], t.rewards[-1], t.dones[-1], {})
+            return (t.observations[-1], t.rewards[-1], t.dones[-1], info)
         else:
-            return self.env_step([*curr_pose, *tgt_gripper_action])
+            return self.env_step([*curr_pose, *tgt_gripper_action], info=info)
 
     def close_gripper(self, curr_pose):
         self._move_gripper(curr_pose, GripperAction.close)
@@ -124,9 +127,13 @@ class PickAndPlaceAbsPrimitive():
         # self.trajectory.observations.append(self.prev_obs)
         return deepcopy(self.trajectory)
 
-    def env_step(self, action, obs_decorator=None):
+    def env_step(self, action, obs_decorator=None, info=None, noisy=False):
+        info = {} if info is None else info
+
+
         # TODO: save these into arrays
-        obs, rew, done, info = self.env.step(action)
+        obs, rew, done, orig_info = self.env.step(action)
+        info = {**orig_info, **info}
 
         if obs_decorator is not None:
             assert callable(obs_decorator)
